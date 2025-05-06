@@ -26,8 +26,8 @@ export async function sendMessage(
 }
 
 export async function markMessageRead(messageId: string): Promise<{ success: boolean }> {
-  const { data } = await axiosClient.put<{ status: string }>(`/api/v1/messages/${messageId}/read`);
-  return { success: data.status === 'success' };
+  const { data } = await axiosClient.patch<{ status: string }>(`/api/v1/messages/${messageId}/read`);
+  return { success: data.data.status === 'success' };
 }
 
 export async function deleteMessage(messageId: string): Promise<{ success: boolean }> {

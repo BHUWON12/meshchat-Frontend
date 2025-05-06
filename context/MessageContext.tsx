@@ -1,264 +1,330 @@
+// frontend/context/MessageContext.tsx
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import {
   getChats as apiGetChats,
   getMessages as apiGetMessages,
   initiateChat as apiInitiateChat,
-  // Removed apiSendMessage and apiMarkMessageAsRead imports
 } from '../services/chats';
+// Import necessary types
 import { User, Chat, Message, ConnectionStatus, MessageType, DeliveryStatus } from '../types/index';
+// Import AuthContext to get the current user
 import { useAuth } from './AuthContext';
-import { useSocket } from './SocketContext'; // Import useSocket
+// Removed import for useSocket to break the circular dependency within the Provider component
+// import { useSocket } from './SocketContext';
 
+// Define the shape of the context value provided by MessageProvider
 interface MessageContextType {
   chats: Chat[];
-  messages: { [chatId: string]: Message[] };
-  fetchChats: () => Promise<void>;
-  fetchMessages: (chatId: string) => Promise<void>;
-  getChat: (chatId: string) => Chat | undefined;
-  getChatMessages: (chatId: string) => Message[];
-  sendMessage: (chatId: string, content: string, type?: MessageType, caption?: string) => Promise<void>;
-  markMessageAsRead: (messageId: string) => Promise<void>;
-  initiateChat: (user: User, connectionStatus: ConnectionStatus) => Promise<Chat>;
-  getChatByParticipant: (userId: string) => Chat | undefined;
+  messages: { [chatId: string]: Message[] }; // Messages nested by chat ID
+  userOnlineStatuses: { [userId: string]: boolean }; // Dedicated state for user online status
+  loading: boolean; // Loading state for initial data fetch
+  fetchChats: () => Promise<void>; // Function to fetch all chats
+  fetchMessages: (chatId: string) => Promise<void>; // Function to fetch messages for a specific chat
+  getChat: (chatId: string) => Chat | undefined; // Getter for a single chat
+  getChatMessages: (chatId: string) => Message[]; // Getter for messages of a specific chat
+  getChatByParticipant: (userId: string) => Chat | undefined; // Getter for chat by participant ID
+  initiateChat: (user: User, connectionStatus?: ConnectionStatus) => Promise<Chat>; // Function to initiate a chat (REST)
+
+  // State setters and update functions provided for AppEventListeners or other components
+  setChats: React.Dispatch<React.SetStateAction<Chat[]>>; // Direct setter for chats state
+  setMessages: React.Dispatch<React.SetStateAction<{ [chatId: string]: Message[] }>>; // Direct setter for messages state
+  setUserOnlineStatus: (userId: string, isOnline: boolean) => void; // Function to update user online status state
+  updateMessageReadStatus: (messageId: string, readerId: string) => void; // Function to update message read status state
+
+  // Removed action functions (sendMessage, markMessageAsRead) as they now use useSocket directly in the calling component/orchestrator
+  // sendMessage: (chatId: string, content: string, type?: MessageType, caption?: string) => Promise<void>;
+  // markMessageAsRead: (messageId: string) => Promise<void>;
+
+  // Keeping updateConnectionStatus if it has a specific use case beyond isOnline
   updateConnectionStatus: (userId: string, status: ConnectionStatus) => void;
 }
 
+// Create the context with an initial undefined value
 const MessageContext = createContext<MessageContextType | undefined>(undefined);
 
+// Message Provider component that manages chat, message, and user status state
 export function MessageProvider({ children }: { children: ReactNode }) {
+  // Access the current authenticated user
   const { user } = useAuth();
   const currentUserId = user?._id || user?.id;
 
+  // --- State ---
+  // State for the list of chats
   const [chats, setChats] = useState<Chat[]>([]);
+  // State for messages, organized by chat ID
   const [messages, setMessages] = useState<{ [chatId: string]: Message[] }>({});
+  // State for tracking user online/offline status
+  const [userOnlineStatuses, setUserOnlineStatuses] = useState<{ [userId: string]: boolean }>({});
+  // State for loading indicator
   const [loading, setLoading] = useState(false);
-  const { socket, sendMessage: sendSocketMessage, markMessageAsRead: markSocketMessageAsRead } = useSocket(); // Get socket and functions
 
+  // Removed: Accessing useSocket directly within the Provider component
+
+  // --- Data Fetching Functions (useCallback for memoization) ---
+
+  // Fetch the list of chats for the current user from the backend (REST API)
   const fetchChats = useCallback(async () => {
-    if (!currentUserId) return;
-    setLoading(true);
+    if (!currentUserId) {
+        console.warn("MessageContext: fetchChats called without current user ID.");
+        return; // Do not fetch if user ID is not available
+    }
+    setLoading(true); // Set loading state
     try {
+      console.log("MessageContext: Fetching chats from API...");
+      // Call the API service to get chats
       const chatsData = await apiGetChats(currentUserId);
+      // Update the chats state
       setChats(chatsData);
+      console.log(`MessageContext: Successfully fetched ${chatsData.length} chats.`);
+
+      // Initialize user online statuses from fetched participant data
+      const initialOnlineStatuses: { [userId: string]: boolean } = {};
+      chatsData.forEach(chat => {
+          chat.participants.forEach(p => {
+              if (p._id || p.id) {
+                   // Assume participant object includes an isOnline property
+                   initialOnlineStatuses[p._id || p.id] = p.isOnline || false;
+              }
+          });
+      });
+      // Update the userOnlineStatuses state, merging with any existing data
+      setUserOnlineStatuses(prev => ({ ...prev, ...initialOnlineStatuses }));
+      console.log(`MessageContext: Initialized online statuses for ${Object.keys(initialOnlineStatuses).length} participants from chats.`);
+
     } catch (error) {
-      console.error('Failed to fetch chats:', error);
+      console.error('MessageContext: Failed to fetch chats:', error);
+      // TODO: Handle error state or display error to user
     } finally {
-      setLoading(false);
+      setLoading(false); // Clear loading state
     }
-  }, [currentUserId]);
+  }, [currentUserId]); // Recreate fetchChats function if currentUserId changes
 
+  // Fetch messages for a specific chat from the backend (REST API)
   const fetchMessages = useCallback(async (chatId: string) => {
+     if (!chatId) {
+         console.warn("MessageContext: fetchMessages called without chatId.");
+         return; // Do not fetch if chat ID is missing
+     }
     try {
+       console.log(`MessageContext: Fetching messages for chat ${chatId} from API...`);
+      // Call the API service to get messages for the chat
       const messagesData = await apiGetMessages(chatId);
+      // Update the messages state for the specific chat ID
       setMessages(prev => ({
         ...prev,
-        [chatId]: messagesData
+        [chatId]: messagesData // Store messages array nested under the chatId key
       }));
+       console.log(`MessageContext: Successfully fetched ${messagesData.length} messages for chat ${chatId}.`);
     } catch (error) {
-      console.error(`Failed to fetch messages for chat ${chatId}:`, error);
+      console.error(`MessageContext: Failed to fetch messages for chat ${chatId}:`, error);
+      // TODO: Handle error
     }
-  }, []);
+  }, []); // No dependencies needed if apiGetMessages is stable
 
+  // --- Getter Functions (useCallback for memoization) ---
+
+  // Get a specific chat object by its ID from the chats state
   const getChat = useCallback((chatId: string) => {
-    return chats.find(chat => chat.id === chatId);
-  }, [chats]);
+     if (!chatId) return undefined;
+    return chats.find(chat => chat.id === chatId || chat._id === chatId); // Check both 'id' and '_id'
+  }, [chats]); // Recreate if chats state changes
 
+  // Get the array of messages for a specific chat ID from the messages state
   const getChatMessages = useCallback((chatId: string) => {
-    return messages[chatId] || [];
-  }, [messages]);
+     if (!chatId) return [];
+    return messages[chatId] || []; // Return the messages array for the chat ID, or empty array if none
+  }, [messages]); // Recreate if messages state changes
 
+  // Get a chat object by one of its participant's user ID from the chats state
   const getChatByParticipant = useCallback((userId: string) => {
+     if (!userId) return undefined;
     return chats.find(chat =>
-      chat.participants.some((p: any) => (p._id || p.id) === userId)
+      chat.participants.some((p: any) => (p._id || p.id) === userId) // Check participants array
     );
-  }, [chats]);
+  }, [chats]); // Recreate if chats state changes
 
-  const updateConnectionStatus = useCallback((userId: string, status: ConnectionStatus) => {
-    setChats(prev => prev.map(chat =>
-      chat.participants.some((p: any) => (p._id || p.id) === userId)
-        ? {
-            ...chat,
-            connectionType: status,
-            isOnline: status === 'online'
-          }
-        : chat
-    ));
-  }, []);
+  // --- State Update Functions (Called by AppEventListeners or other components) ---
+  // These functions update the state within this context based on external events (like socket events).
 
-  const sendMessage = useCallback(async (
-    chatId: string,
-    content: string,
-    type: MessageType = 'text',
-    caption?: string
-  ) => {
-    console.log("sendMessage function in MessageContext called"); // --- LOG 1 ---
-    if (!currentUserId || !socket) return; // Ensure socket is available
-    const chat = getChat(chatId);
-    if (!chat) return;
-
-    const recipient = chat.participants.find((p: any) => (p._id || p.id) !== currentUserId);
-
-    const tempMessage: Message = {
-      id: `temp-${Date.now()}`,
-      chatId,
-      senderId: currentUserId,
-      receiverId: recipient?._id || recipient?.id || '',
-      content,
-      type,
-      caption,
-      timestamp: new Date(),
-      status: 'pending', // Initially pending
-      read: false
-    };
-
-    setMessages(prev => ({
-      ...prev,
-      [chatId]: [...(prev[chatId] || []), tempMessage]
-    }));
-
-    try {
-      console.log("Calling sendSocketMessage from MessageContext"); // --- LOG 2 ---
-      sendSocketMessage({ chatId, content, type, metadata: { caption } }, (response: any) => {
-        if (response?.status === 'success') {
-          const newMessage = response.message;
-          setMessages(prev => ({
-            ...prev,
-            [chatId]: prev[chatId].map(m =>
-              m.id === tempMessage.id ? { ...newMessage, senderId: newMessage.sender?._id || newMessage.sender?.id || currentUserId, status: 'delivered' as DeliveryStatus } : m
-            )
-          }));
-          setChats(prev => prev.map(c =>
-            c.id === chatId ? {
-              ...c,
-              lastMessage: {
-                _id: newMessage._id,
-                content: type === 'text' ? content : `Sent ${type}`,
-                timestamp: new Date(newMessage.createdAt), // Use createdAt as timestamp
-                sender: { _id: currentUserId },
-              },
-              // unreadCount: c.unreadCount + 1 // Backend should handle this
-            } : c
-          ));
-        } else {
-          console.error('Error sending message:', response?.message);
-          setMessages(prev => ({
-            ...prev,
-            [chatId]: prev[chatId].map(m =>
-              m.id === tempMessage.id ? { ...m, status: 'failed' as DeliveryStatus } : m
-            )
-          }));
-        }
-      });
-    } catch (error) {
-      console.error('Failed to send message via socket:', error);
-      setMessages(prev => ({
-        ...prev,
-        [chatId]: prev[chatId].map(m =>
-          m.id === tempMessage.id ? { ...m, status: 'failed' as DeliveryStatus } : m
-        )
+  // Update a specific user's online status in the userOnlineStatuses state
+  const setUserOnlineStatus = useCallback((userId: string, isOnline: boolean) => {
+      if (!userId) {
+           console.warn("MessageContext: setUserOnlineStatus called without userId.");
+           return;
+      }
+      console.log(`MessageContext: Setting user ${userId} online status to ${isOnline}`);
+      // Update the dedicated user online statuses state using functional update
+      setUserOnlineStatuses(prev => ({
+          ...prev,
+          [userId]: isOnline
       }));
-    }
-  }, [getChat, currentUserId, socket, sendSocketMessage]);
+      // Also update the isOnline status directly within the participants array in the chats state
+       setChats(prev => prev.map(chat => ({
+           ...chat,
+           participants: chat.participants.map(p =>
+               // Find the participant by ID and update their isOnline status
+               (p._id || p.id) === userId ? { ...p, isOnline: isOnline } : p
+           )
+       })));
+  }, [setUserOnlineStatuses, setChats]); // Recreate if state setters change (stable identities)
 
-  const markMessageAsRead = useCallback(async (messageId: string) => {
-    if (!socket) return;
-    try {
-      markSocketMessageAsRead(messageId, (response: any) => {
-        if (response?.status !== 'success') {
-          console.error('Error marking message as read:', response?.message);
-        }
-      });
+  // Update the read status of a specific message in the messages state
+  // This function is called by AppEventListeners when a 'message-read' event is received
+  const updateMessageReadStatus = useCallback((messageId: string, readerId: string) => {
+      if (!messageId || !readerId) {
+          console.warn("MessageContext: updateMessageReadStatus called without messageId or readerId.");
+          return;
+      }
+      console.log(`MessageContext: Updating read status for message ${messageId} by user ${readerId}`);
+
       setMessages(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(chatId => {
-          updated[chatId] = updated[chatId].map(msg =>
-            msg.id === messageId ? { ...msg, read: true, status: 'read' } : msg
-          );
-        });
-        return updated;
+          const updated = { ...prev }; // Create a mutable copy of the messages state object
+          let messageFound = false; // Flag to track if the message was found and updated
+
+          // Iterate through each chat's messages to find the target message
+          Object.keys(updated).forEach(chatId => {
+               if (updated[chatId]) { // Check if messages exist for this chatId
+                 updated[chatId] = updated[chatId].map(msg => {
+                   // Check if the current message is the target message AND
+                   // the reader is not already in the message's readBy array
+                   if (
+                       (msg._id === messageId || msg.id === messageId) && // Match by _id or id
+                       !(msg.readBy || []).some(r => (r.readerId === readerId || r.reader?._id === readerId)) // Check if readerId exists
+                       ) {
+                       messageFound = true; // Mark that the message was found
+
+                       // Create the updated message object
+                       const updatedMsg = {
+                           ...msg,
+                           // Add the new reader to the readBy array
+                           readBy: [...(msg.readBy || []), { readerId, readAt: new Date().toISOString() }],
+                       };
+                       // Mark the message as read and set delivery status to 'read'
+                       updatedMsg.read = true;
+                       updatedMsg.status = 'read' as DeliveryStatus;
+
+                       console.log(`Message ${messageId} in chat ${chatId} marked as read by ${readerId}.`);
+                       return updatedMsg; // Return the updated message
+                   }
+                   return msg; // Return original message if no match or already read by this user
+                 });
+               }
+           });
+
+           if (!messageFound) {
+               console.warn(`MessageContext: Message ${messageId} not found in state or already read by ${readerId}. No state update needed.`);
+           }
+          // Return the updated messages state (or previous state if no message was found/changed)
+          return messageFound ? updated : prev;
       });
-      // Unread count should be handled by the backend and pushed via socket
-    } catch (error) {
-      console.error('Failed to mark message as read via socket:', error);
-    }
-  }, [socket, markSocketMessageAsRead]);
 
-  const initiateChat = useCallback(async (user: User, connectionStatus: ConnectionStatus = 'online') => {
-    if (!currentUserId) throw new Error('No current user');
+       // TODO: Implement unread count decrement logic here if needed
+       // Requires finding the specific chat containing messageId and decrementing its unread count.
+       // This is complex with the current state structure. Consider if backend handles this.
+
+  }, [setMessages, setChats]); // Recreate if state setters change
+
+   // --- Action Functions (Initiated from UI/Orchestrator - REST based) ---
+
+  // Initiate a new chat with a participant using the REST API
+  const initiateChat = useCallback(async (participantUser: User, connectionStatus: ConnectionStatus = 'online') => {
+    if (!currentUserId) throw new Error('MessageContext: Cannot initiate chat. No current user.');
+    if (!participantUser?._id && !participantUser?.id) throw new Error('MessageContext: Cannot initiate chat. Participant user has no ID.');
+
     try {
-      const existingChat = getChatByParticipant(user.id);
-      if (existingChat) return existingChat;
+      // Check if a chat already exists with this participant using the getter
+      const existingChat = getChatByParticipant(participantUser._id || participantUser.id);
+      if (existingChat) {
+          console.log(`MessageContext: Chat with participant ${participantUser.username} already exists: ${existingChat._id || existingChat.id}. Returning existing chat.`);
+          return existingChat; // Return the existing chat object
+      }
 
-      const newChat = await apiInitiateChat(user.id, currentUserId);
+      console.log(`MessageContext: Initiating new chat with participant: ${participantUser.username} via API...`);
+      // Call the API service to initiate the chat
+      const newChat = await apiInitiateChat(participantUser._id || participantUser.id, currentUserId);
+
+      // Add the newly created chat to the chats state
       setChats(prev => [...prev, newChat]);
-      return newChat;
+      console.log(`MessageContext: New chat initiated and added to state: ${newChat._id || newChat.id}`);
+
+      // Optionally trigger a fetch of initial messages for this new chat if needed immediately
+      // fetchMessages(newChat._id || newChat.id); // Decide if you need to fetch immediately on chat creation
+
+      return newChat; // Return the newly created chat object from the API response
     } catch (error) {
-      console.error('Chat initiation failed:', error);
-      throw error;
+      console.error('MessageContext: Chat initiation failed:', error);
+       // TODO: Handle error (e.g., show toast)
+      throw error; // Re-throw the error for the calling component to handle
     }
-  }, [getChatByParticipant, currentUserId]);
+  }, [getChatByParticipant, currentUserId, setChats]); // Dependencies
 
+
+   // Keeping updateConnectionStatus if it has a specific use case beyond setUserOnlineStatus (e.g., updating connection type status)
+   // Otherwise, consider removing it. If used, it updates the 'chats' state.
+   const updateConnectionStatus = useCallback((userId: string, status: ConnectionStatus) => {
+    console.log(`MessageContext: updateConnectionStatus called for user ${userId} with status ${status}`);
+    // This function likely updates a 'connectionType' property on the participant within the chat
+     setChats(prev => prev.map(chat => ({
+       ...chat,
+       participants: chat.participants.map(p =>
+           // Find the participant by ID and update their connectionType status
+           (p._id || p.id) === userId ? { ...p, connectionType: status } : p // Assume participant has connectionType
+       )
+     })));
+   }, [setChats]); // Dependency on setChats
+
+
+  // --- Initial Data Fetch ---
+  // Effect to fetch chats when the component mounts or fetchChats dependency changes
   useEffect(() => {
-    console.log("useEffect for new-message in MessageContext running"); // --- LOG 3 ---
-    if (!socket) {
-      console.log("Socket is not available in new-message useEffect"); // --- LOG 4 ---
-      return;
-    }
-
-    socket.on('new-message', (message: any) => {
-      console.log("Received 'new-message' event on frontend:", message); // --- LOG 5 ---
-      const { chatId } = message;
-      setMessages(prev => {
-        const chatMessages = prev[chatId] || [];
-        if (!chatMessages.some(msg => msg.id === message._id)) {
-          return {
-            ...prev,
-            [chatId]: [...chatMessages, { ...message, senderId: message.sender?._id || message.sender }]
-          };
-        }
-        return prev;
-      });
-      setChats(prev =>
-        prev.map(chat =>
-          chat.id === chatId ? { ...chat, lastMessage: message } : chat
-        )
-      );
-    });
-
-    return () => {
-      console.log("Cleaning up 'new-message' listener in MessageContext"); // --- LOG 6 ---
-      socket.off('new-message');
-    };
-  }, [socket, setMessages, setChats]);
-
-  useEffect(() => {
+    console.log("MessageContext: Running initial fetchChats useEffect.");
+    // Call the memoized fetchChats function
     fetchChats();
-  }, [fetchChats]);
+  }, [fetchChats]); // Dependency on the memoized fetchChats function
 
+  // Removed socket event listeners useEffect from here
+
+  // --- Context value provided to consumers ---
   return (
     <MessageContext.Provider
       value={{
-        chats,
-        messages,
+        chats, // Provide the chats state
+        messages, // Provide the messages state
+        userOnlineStatuses, // <-- Provide the new state
+        loading, // Provide loading state
+
+        // Provide data fetching functions
         fetchChats,
         fetchMessages,
+
+        // Provide getter functions
         getChat,
         getChatMessages,
-        sendMessage,
-        markMessageAsRead,
-        initiateChat,
         getChatByParticipant,
-        updateConnectionStatus
+
+        // Provide state setters and update functions for AppEventListeners
+        setChats, // <-- Provided
+        setMessages, // <-- Provided
+        setUserOnlineStatus, // <-- Provided
+        updateMessageReadStatus, // <-- Provided
+
+        // Provide action functions (REST based)
+        initiateChat,
+
+        // Provided if still needed
+        updateConnectionStatus,
       }}
     >
-      {children}
+      {children} {/* Render child components */}
     </MessageContext.Provider>
   );
 }
 
+// Custom hook to consume the MessageContext
 export const useMessages = () => {
   const context = useContext(MessageContext);
   if (!context) {
+    // This error means the component calling useMessages is not wrapped by MessageProvider
     throw new Error('useMessages must be used within a MessageProvider');
   }
   return context;
