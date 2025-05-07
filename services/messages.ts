@@ -26,7 +26,7 @@ export async function sendMessage(
 }
 
 export async function markMessageRead(messageId: string): Promise<{ success: boolean }> {
-  const { data } = await axiosClient.put<{ status: string }>(`/api/v1/messages/${messageId}/read`);
+  const { data } = await axiosClient.patch<{ status: string }>(`/api/v1/messages/${messageId}/read`);
   return { success: data.status === 'success' };
 }
 

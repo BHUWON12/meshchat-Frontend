@@ -10,31 +10,28 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
-  Alert, // Import Alert for the image picker mock
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Send, Plus, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, Send, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-// FIX: Correctly import services using the aliases from services/index.ts
+// Import services
 import { chatsApi, messagesApi } from '../../../../services/index';
 
 import { useAuth } from '../../../../context/AuthContext';
 import { useSocket } from '../../../../context/SocketContext';
 import Colors from '../../../../constants/Colors';
-// FIX: Adjust component import paths based on the previous refactoring suggestion
-// Assuming these components were moved to components/common
 import UserAvatar from '../../../../components/UserAvatar';
 import ChatBubble from '../../../../components/ChatBubble';
 import EmptyState from '../../../../components/EmptyState';
 
-import { isOwnMessage } from '../../../../utils/helpers'; // Adjust the import path as needed
+import { isOwnMessage } from '../../../../utils/helpers';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
-  // Assuming sendMessage from useSocket is designed to emit the message via socket
   const { socket, isConnected, sendMessage: sendSocketMessage } = useSocket();
   const router = useRouter();
 
@@ -44,6 +41,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [recipient, setRecipient] = useState<any>(null);
+  const [pendingMessages, setPendingMessages] = useState<Set<string>>(new Set());
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -51,21 +49,15 @@ export default function ChatScreen() {
   const fetchChatDetails = async () => {
     try {
       setLoading(true);
-      // FIX: Use chatsApi and the correct function name from services/chats.ts (getChat)
-      // Also pass the currentUserId as required by your getChat function
-      const chatResponse = await chatsApi.getChat(id, user?._id || ''); // Ensure user?._id is passed
-
-      // FIX: Use messagesApi and the correct function name from services/messages.ts (getMessages)
+      const chatResponse = await chatsApi.getChat(id, user?._id || '');
       const messagesResponse = await messagesApi.getMessages(id);
 
-      // Assuming chatResponse.data is the chat object as per your mapChatResponse
-      setChat(chatResponse); // Set the mapped chat object directly
-      // Assuming messagesResponse is the array of messages as per your getMessages function return
-      setMessages(messagesResponse || []); // Set the array of messages
+      setChat(chatResponse);
+      setMessages(messagesResponse || []);
 
       // Find recipient from the fetched chatResponse object
       if (chatResponse && chatResponse.participants) {
-        const currentUserId = user?._id || user?.id; // Use either _id or id for comparison
+        const currentUserId = user?._id || user?.id;
         const otherUser = chatResponse.participants.find(
           (p: any) => (p._id || p.id) !== currentUserId
         );
@@ -78,7 +70,6 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error('Error fetching chat details:', error);
-      // Optionally set an error state to display in the UI
     } finally {
       setLoading(false);
     }
@@ -88,29 +79,49 @@ export default function ChatScreen() {
     if (id) {
       fetchChatDetails();
     }
-    // Add user dependency if fetchChatDetails relies on user being available
   }, [id, user]);
 
   // Listen for new messages
   useEffect(() => {
     if (!socket) return;
 
-    // Ensure the event listener is only added once
     const onNewMessage = (message: any) => {
       console.log('Received new message:', message);
       if (message.chatId === id) {
-        // Add the new message to the state and ensure it has a timestamp
-         const messageWithTimestamp = {
-             ...message,
-             timestamp: new Date(message.createdAt || message.timestamp || Date.now()),
-         };
-        setMessages(prev => [...prev, messageWithTimestamp]);
+        const messageId = message._id || message.id;
 
-        // Mark message as read if it's not our own
-        if (!isOwnMessage(message, user?._id || user?.id || '')) {
-           // Assuming your socket context or a separate service handles marking as read via socket
-           // Or you might need to use the REST API here if socket isn't for marking read
-           messagesApi.markMessageRead(message._id || message.id).catch(console.error);
+        // IMPORTANT: Check if this is a message we're already tracking as pending
+        // If so, update the pending message rather than add a new one
+        if (pendingMessages.has(messageId)) {
+          setPendingMessages(prev => {
+            const updated = new Set(prev);
+            updated.delete(messageId);
+            return updated;
+          });
+          
+          // Update the message status rather than adding a duplicate
+          setMessages(prev => prev.map(msg => 
+            msg._id === messageId || msg.id === messageId ? 
+              { ...message, timestamp: new Date(message.createdAt || message.timestamp || Date.now()) } : 
+              msg
+          ));
+        } else {
+          // This is a new message (likely from the other user)
+          const messageWithTimestamp = {
+            ...message,
+            timestamp: new Date(message.createdAt || message.timestamp || Date.now()),
+          };
+          
+          // Only add if it's not already in the messages array
+          setMessages(prev => {
+            const exists = prev.some(m => (m._id === messageId || m.id === messageId));
+            return exists ? prev : [...prev, messageWithTimestamp];
+          });
+
+          // Mark message as read if it's not our own
+          if (!isOwnMessage(message, user?._id || user?.id || '')) {
+            messagesApi.markMessageRead(messageId).catch(console.error);
+          }
         }
       }
     };
@@ -120,14 +131,11 @@ export default function ChatScreen() {
     // Clean up listeners
     return () => {
       socket.off('new-message', onNewMessage);
-      // You might also want to emit a 'leave-chat' event here
       if (socket && isConnected) {
-         socket.emit('leave-chat', id);
+        socket.emit('leave-chat', id);
       }
     };
-    // Add socket and id as dependencies
-  }, [socket, id, user, isConnected, messagesApi]); // Add messagesApi as dependency if used inside effect
-
+  }, [socket, id, user, isConnected, pendingMessages]);
 
   // Send text message
   const handleSendMessage = async () => {
@@ -137,40 +145,60 @@ export default function ChatScreen() {
     try {
       setSending(true);
 
+      // Create a temporary ID for optimistic update tracking
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
+
       // Construct the message payload
       const messagePayload = {
-         content: trimmedMessage,
-         type: 'text',
-         chatId: id, // Include chatId in the payload
-         // Add sender info if needed by the backend socket handler
-         sender: {
-             _id: user._id || user.id,
-             username: user.username, // Or other relevant user info
-         },
-         createdAt: new Date().toISOString(), // Client-side timestamp for immediate display
-         // Add a temporary _id for optimistic updates if needed
-         _id: `temp-${Date.now()}-${Math.random()}`,
+        _id: tempId, // Temporary ID to track this message
+        id: tempId,  // Some systems use id instead of _id
+        content: trimmedMessage,
+        type: 'text',
+        chatId: id,
+        sender: {
+          _id: user._id || user.id,
+          username: user.username,
+        },
+        createdAt: new Date().toISOString(),
+        status: 'sending',
       };
 
+      // Add message to UI immediately (optimistic update)
+      setMessages(prev => [...prev, {...messagePayload, sender: user}]);
+      
+      // Track this as a pending message
+      setPendingMessages(prev => new Set(prev).add(tempId));
 
       if (socket && isConnected) {
         // Send via socket
-        // Assuming sendSocketMessage function in your useSocket context handles emitting the message
-        sendSocketMessage(messagePayload); // Use the function provided by SocketContext
-
-        // Optimistically update the UI
-        // Add the message with a temporary ID, it will be replaced by the real message from the 'new-message' event
-        setMessages(prev => [...prev, {...messagePayload, sender: user}]); // Assuming sender structure matches ChatBubble expectation
-
+        sendSocketMessage({
+          content: trimmedMessage,
+          type: 'text',
+          chatId: id,
+          tempId: tempId, // Include tempId so we can match it later
+        });
+        
+        // NOTE: We don't add the message again here
+        // The socket 'new-message' event will handle updating this message
+        // with the real ID from the server
       } else {
-        // Send via REST API
-        // FIX: Use messagesApi and the correct function name from services/messages.ts (sendMessage)
+        // Send via REST API as fallback
         const newMessage = await messagesApi.sendMessage(id, {
           content: trimmedMessage,
           type: 'text',
         });
-        // Update state with the actual message from the backend if not using socket
-        setMessages(prev => [...prev, newMessage]);
+        
+        // Replace our temporary message with the real one from the server
+        setMessages(prev => prev.map(msg => 
+          msg._id === tempId ? newMessage : msg
+        ));
+        
+        // Remove from pending
+        setPendingMessages(prev => {
+          const updated = new Set(prev);
+          updated.delete(tempId);
+          return updated;
+        });
       }
 
       // Clear input
@@ -178,7 +206,10 @@ export default function ChatScreen() {
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error sending message:', error);
-      // Optionally display an error to the user
+      // Update the message to show it failed
+      setMessages(prev => prev.map(msg => 
+        msg._id === tempId ? {...msg, status: 'failed'} : msg
+      ));
     } finally {
       setSending(false);
     }
@@ -194,10 +225,6 @@ export default function ChatScreen() {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        // In a real app, you would upload the image to a server here
-        // and then send the message with the image URL
-
-        // For now, we'll just mock it
         Alert.alert('Feature not available', 'Image sharing will be implemented in a future update.');
       }
     } catch (error) {
@@ -207,17 +234,15 @@ export default function ChatScreen() {
 
   // Scroll to bottom on new messages
   useEffect(() => {
-    // Use setTimeout to ensure the FlatList has rendered the new message before scrolling
     if (messages.length > 0 && flatListRef.current) {
-       setTimeout(() => {
-           flatListRef.current?.scrollToEnd({ animated: true });
-       }, 100); // Small delay
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     }
-  }, [messages]); // Scroll when messages array changes
+  }, [messages]);
 
   // Render message item
   const renderMessage = ({ item, index }: { item: any; index: number }) => {
-    // Ensure message sender ID is compared correctly against current user's ID
     const isOwn = isOwnMessage(item, user?._id || user?.id || '');
     const prevMessage = messages[index - 1];
     const isConsecutive = index > 0 && isOwnMessage(prevMessage, user?._id || user?.id || '') === isOwn;
@@ -226,10 +251,8 @@ export default function ChatScreen() {
       <ChatBubble
         message={item}
         isOwn={isOwn}
-        // Only show avatar if it's not a consecutive message from the same user and it's not the current user's message
         showAvatar={!isConsecutive && !isOwn}
         isConsecutive={isConsecutive}
-        // Pass sender info if needed for avatar/name in ChatBubble
         sender={item.sender}
       />
     );
@@ -242,12 +265,6 @@ export default function ChatScreen() {
       </SafeAreaView>
     );
   }
-
-   // Optional: Show empty state even if not strictly in the center
-   if (messages.length === 0 && !loading) {
-       // You might render the header and input bar, with EmptyState in the middle
-   }
-
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -265,7 +282,7 @@ export default function ChatScreen() {
             name={recipient?.username}
             size={36}
             showStatus
-            isOnline={recipient?.isOnline} // Assuming recipient object has isOnline property
+            isOnline={recipient?.isOnline}
           />
           <View style={styles.userTexts}>
             <Text style={styles.username}>{recipient?.username || 'Loading...'}</Text>
@@ -274,36 +291,28 @@ export default function ChatScreen() {
             </Text>
           </View>
         </TouchableOpacity>
-        {/* Add more header icons like video call, call etc. here */}
       </View>
 
       <KeyboardAvoidingView
         style={styles.content}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} // Use 'height' on Android
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0} // Adjust offset as needed
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {/* Render EmptyState directly if no messages */}
         {messages.length === 0 && !loading ? (
-            <EmptyState type="messages" />
+          <EmptyState type="messages" />
         ) : (
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              renderItem={renderMessage}
-              keyExtractor={(item) => item._id || item.id || item.createdAt} // Use a robust key
-              contentContainerStyle={styles.messagesContainer}
-              // Invert the list if you want newest messages at the bottom and load older on scroll up
-              // inverted={true}
-              // onEndReached={} // Implement pagination if needed
-              // onEndReachedThreshold={0.5}
-            />
-         )}
-
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item._id || item.id || item.createdAt}
+            contentContainerStyle={styles.messagesContainer}
+          />
+        )}
 
         <View style={styles.inputContainer}>
           <TouchableOpacity style={styles.attachButton} onPress={handleSendImage}>
             <Plus size={24} color={Colors.common.gray[600]} />
-            {/* Or maybe ImageIcon here depending on desired icon */}
           </TouchableOpacity>
 
           <TextInput
@@ -313,8 +322,8 @@ export default function ChatScreen() {
             onChangeText={setMessageText}
             multiline
             maxLength={1000}
-            underlineColorAndroid="transparent" // For Android TextInput style
-            textAlignVertical="center" // Vertically align text on Android
+            underlineColorAndroid="transparent"
+            textAlignVertical="center"
           />
 
           <TouchableOpacity
@@ -336,7 +345,6 @@ export default function ChatScreen() {
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

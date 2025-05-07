@@ -159,7 +159,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Mark message as read with improved error handling and socket usage
+  // Mark message as read with improved error handling
   const markMessageAsRead = (messageId: string, callback?: (response: any) => void) => {
     if (!socket || !isConnected) {
       console.error('Socket not connected, cannot mark message as read');
@@ -167,19 +167,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     
-    console.log('Marking message as read via socket:', messageId);
-    
-    // Only use socket for read status - never try HTTP for this
-    socket.emit('mark-as-read', { messageId }, (response: any) => {
-      if (response?.status === 'error') {
-        console.error('Error marking message as read:', response.message);
-      } else {
-        console.log('Message marked as read successfully');
+    socket.timeout(5000).emit('mark-as-read', { messageId }, (err: any, response: any) => {
+      if (err) {
+        console.error('Mark as read timeout:', err);
+        callback?.({ status: 'error', message: 'Request timed out' });
+        return;
       }
-      
-      if (callback && typeof callback === 'function') {
-        callback(response);
-      }
+      callback?.(response);
     });
   };
 
