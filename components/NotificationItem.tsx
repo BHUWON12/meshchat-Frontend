@@ -1,5 +1,5 @@
-import React from 'react';
-import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { TouchableOpacity, View, Text, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import UserAvatar from './UserAvatar';
 import { Notification, NotificationType, useNotifications } from '../context/NotificationContext';
@@ -13,105 +13,127 @@ type NotificationItemProps = {
 
 export default function NotificationItem({ notification }: NotificationItemProps) {
   const router = useRouter();
-  const { markAsRead } = useNotifications();
-  
-  // Format timestamp
+  const { markAsRead } = useNotifications?.() || {};
+
   const timestamp = notification.createdAt ? formatMessageDate(notification.createdAt) : '';
-  
-  // Get notification content based on type
-  const getNotificationContent = () => {
+
+  const getNotificationContent = useCallback(() => {
     switch (notification.type) {
       case 'message':
         return {
-          title: `New message from ${notification.sender?.username}`,
-          message: notification.message?.content || 'Sent you a message',
+          title: `New message from ${notification.sender?.username || 'User'}`,
+          message: notification.message?.content || notification.data?.messageContent || 'Sent you a message',
           action: () => handleMessagePress()
         };
       case 'connection_request':
         return {
           title: 'Connection Request',
-          message: `${notification.sender?.username} wants to connect with you`,
+          message: `${notification.sender?.username || 'User'} wants to connect with you`,
           action: () => handleConnectionPress()
         };
       case 'connection_accepted':
         return {
           title: 'Connection Accepted',
-          message: `${notification.sender?.username} accepted your connection request`,
+          message: `${notification.sender?.username || 'User'} accepted your connection request`,
           action: () => handleProfilePress()
         };
       default:
         return {
-          title: 'Notification',
-          message: 'You have a new notification',
+          title: 'System Notification',
+          message: notification.data?.content || 'You have a new notification',
           action: () => handleMarkAsRead()
         };
     }
-  };
-  
+  }, [notification]);
+
   const content = getNotificationContent();
-  
-  const handleMessagePress = () => {
-    if (notification.message?.chat) {
-      markAsRead(notification._id);
-      router.push(`/(protected)/(tabs)/chat/${notification.message.chat}`);
+
+  const handleMessagePress = useCallback(() => {
+    const chatId = notification.message?.chat || notification.data?.chatId;
+    if (chatId) {
+      markAsRead?.(notification._id);
+      router.push(`/(protected)/(tabs)/chat/${chatId}`);
+    } else {
+      console.warn("NotificationItem: Message notification missing chat ID:", notification);
+      Alert.alert("Error", "Chat ID not found for this message notification.");
+      handleMarkAsRead();
     }
-  };
-  
-  const handleConnectionPress = () => {
-    markAsRead(notification._id);
+  }, [notification, markAsRead, router]);
+
+  const handleConnectionPress = useCallback(() => {
+    markAsRead?.(notification._id);
     router.push('/(protected)/(tabs)/connections');
-  };
-  
-  const handleProfilePress = () => {
-    markAsRead(notification._id);
-    if (notification.sender?._id) {
-      // Navigate to profile or start chat
-      router.push(`/(protected)/(tabs)/notifications/${notification.sender._id}`);
+  }, [notification, markAsRead, router]);
+
+  const handleProfilePress = useCallback(() => {
+    markAsRead?.(notification._id);
+    const senderId = notification.sender?._id || notification.sender?.id;
+    if (senderId) {
+      router.push('/(protected)/(tabs)/connections');
+    } else {
+      console.warn("NotificationItem: Notification missing sender ID for profile/chat action:", notification);
+      handleMarkAsRead();
     }
-  };
-  
-  const handleMarkAsRead = () => {
-    markAsRead(notification._id);
-  };
-  
-  // Handle connection request actions
-  const handleAccept = async () => {
-    if (notification.data?.requestId) {
+  }, [notification, markAsRead, router]);
+
+  const handleMarkAsRead = useCallback(() => {
+    markAsRead?.(notification._id);
+    console.log("NotificationItem: Manually marked notification as read:", notification._id);
+  }, [notification, markAsRead]);
+
+  const handleAccept = useCallback(async () => {
+    const requestId = notification.data?.requestId;
+    if (requestId) {
       try {
-        await respondToRequest(notification.data.requestId, 'accept');
-        markAsRead(notification._id);
+        console.log("NotificationItem: Accepting connection request:", requestId);
+        await respondToRequest(requestId, 'accept');
+        markAsRead?.(notification._id);
+        console.log("NotificationItem: Connection request accepted.");
       } catch (error) {
-        console.error('Failed to accept request:', error);
+        console.error('NotificationItem: Failed to accept request:', error);
+        Alert.alert("Error", "Failed to accept connection request.");
       }
+    } else {
+      console.warn("NotificationItem: Connection request notification missing requestId:", notification);
+      Alert.alert("Error", "Invalid connection request notification.");
+      handleMarkAsRead();
     }
-  };
-  
-  const handleReject = async () => {
-    if (notification.data?.requestId) {
+  }, [notification, markAsRead]);
+
+  const handleReject = useCallback(async () => {
+    const requestId = notification.data?.requestId;
+    if (requestId) {
       try {
-        await respondToRequest(notification.data.requestId, 'reject');
-        markAsRead(notification._id);
+        console.log("NotificationItem: Rejecting connection request:", requestId);
+        await respondToRequest(requestId, 'reject');
+        markAsRead?.(notification._id);
+        console.log("NotificationItem: Connection request rejected.");
       } catch (error) {
-        console.error('Failed to reject request:', error);
+        console.error('NotificationItem: Failed to reject request:', error);
+        Alert.alert("Error", "Failed to reject connection request.");
       }
+    } else {
+      console.warn("NotificationItem: Connection request notification missing requestId:", notification);
+      Alert.alert("Error", "Invalid connection request notification.");
+      handleMarkAsRead();
     }
-  };
-  
+  }, [notification, markAsRead]);
+
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={[
-        styles.container, 
+        styles.container,
         !notification.read && styles.unread
       ]}
       onPress={content.action}
       activeOpacity={0.7}
     >
-      <UserAvatar 
+      <UserAvatar
         uri={notification.sender?.avatar}
         name={notification.sender?.username || 'User'}
         size={50}
       />
-      
+
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title} numberOfLines={1}>
@@ -119,22 +141,21 @@ export default function NotificationItem({ notification }: NotificationItemProps
           </Text>
           {timestamp && <Text style={styles.time}>{timestamp}</Text>}
         </View>
-        
+
         <Text style={styles.message} numberOfLines={1}>
           {content.message}
         </Text>
-        
-        {/* Connection request actions */}
+
         {notification.type === 'connection_request' && !notification.read && (
           <View style={styles.actions}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.acceptButton]} 
+            <TouchableOpacity
+              style={[styles.actionButton, styles.acceptButton]}
               onPress={handleAccept}
             >
               <Text style={styles.actionText}>Accept</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.rejectButton]} 
+            <TouchableOpacity
+              style={[styles.actionButton, styles.rejectButton]}
               onPress={handleReject}
             >
               <Text style={[styles.actionText, styles.rejectText]}>Decline</Text>
@@ -173,11 +194,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.common.gray[900],
     flex: 1,
+    marginRight: 8,
   },
   time: {
     fontSize: 12,
     color: Colors.common.gray[500],
-    marginLeft: 8,
   },
   message: {
     fontSize: 14,
@@ -193,6 +214,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 4,
     marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   acceptButton: {
     backgroundColor: Colors.common.blue[500],

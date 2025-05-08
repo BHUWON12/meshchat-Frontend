@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import { X } from 'lucide-react-native';
+import ToastItem from '../components/ToastItem';// We'll define this separately
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -30,18 +30,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   ) => {
     const id = Date.now().toString();
     const newToast = { id, message, type, duration };
-    
-    setToasts(prevToasts => [...prevToasts, newToast]);
 
-    if (duration > 0) {
-      setTimeout(() => {
-        hideToast(id);
-      }, duration);
-    }
+    setToasts(prev => {
+      const maxToasts = 3;
+      return [...prev.slice(-maxToasts + 1), newToast];
+    });
   };
 
   const hideToast = (id: string) => {
-    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   const getToastBackground = (type: ToastType) => {
@@ -68,73 +65,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <ToastItem
             key={toast.id}
             toast={toast}
-            onHide={() => hideToast(toast.id)}
             backgroundColor={getToastBackground(toast.type)}
+            onHide={() => hideToast(toast.id)}
           />
         ))}
       </View>
     </ToastContext.Provider>
-  );
-}
-
-function ToastItem({
-  toast,
-  onHide,
-  backgroundColor,
-}: {
-  toast: Toast;
-  onHide: () => void;
-  backgroundColor: string;
-}) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    return () => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: -20,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    };
-  }, []);
-
-  return (
-    <Animated.View
-      style={[
-        styles.toast,
-        {
-          backgroundColor,
-          opacity: fadeAnim,
-          transform: [{ translateY }],
-        },
-      ]}
-    >
-      <Text style={styles.toastText}>{toast.message}</Text>
-      <TouchableOpacity onPress={onHide} style={styles.closeButton}>
-        <X size={18} color="white" />
-      </TouchableOpacity>
-    </Animated.View>
   );
 }
 
@@ -145,7 +81,6 @@ export function useToast() {
   }
   return context;
 }
-
 const styles = StyleSheet.create({
   toastContainer: {
     position: 'absolute',

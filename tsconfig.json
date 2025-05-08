@@ -8,13 +8,20 @@
     "lib": [
       "dom",
       "esnext"
-    ]
+    ],
+    "strict": true, // Recommended: Enable strict type-checking
+    "skipLibCheck": true // Recommended: Skip type checking of declaration files.
   },
   "extends": "expo/tsconfig.base",
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    // Add this line to include your custom declaration files in the types folder
+    "types/**/*.d.ts"
+  ],
+   "exclude": [
+    "node_modules" // Usually excluded by default, but good to be explicit
   ]
 }

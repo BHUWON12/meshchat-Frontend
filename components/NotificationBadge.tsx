@@ -1,19 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Colors from '../constants/Colors';
+import { useNotifications } from '../context/NotificationContext';
 
 interface NotificationBadgeProps {
-  count: number;
   size?: 'small' | 'medium' | 'large';
+  style?: object;
 }
 
-export default function NotificationBadge({ 
-  count, 
-  size = 'medium' 
-}: NotificationBadgeProps) {
-  if (count <= 0) return null;
-  
-  // Determine size properties
+export default function NotificationBadge({ size = 'medium', style }: NotificationBadgeProps) {
+  const { unreadCount } = useNotifications?.() || { unreadCount: 0 };
+
+  if (unreadCount <= 0) return null;
+
   const sizeStyles = {
     small: {
       width: 16,
@@ -40,23 +39,23 @@ export default function NotificationBadge({
       right: -10
     }
   };
-  
+
   const { width, height, fontSize, borderRadius, top, right } = sizeStyles[size];
-  
-  // Format count to display (max 99+)
-  const displayCount = count > 99 ? '99+' : count.toString();
-  
+
+  const displayCount = unreadCount > 99 ? '99+' : unreadCount.toString();
+
   return (
-    <View 
+    <View
       style={[
-        styles.badge, 
-        { 
-          width, 
-          height, 
+        styles.badge,
+        {
+          width,
+          height,
           borderRadius,
           top,
           right
-        }
+        },
+        style
       ]}
     >
       <Text style={[styles.count, { fontSize }]}>

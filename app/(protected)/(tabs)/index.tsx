@@ -205,7 +205,7 @@ export default function ChatsScreen() {
           // You'll need to adjust ChatListItem's props interface
           chatId={item.id} // Pass ID
           recipientName={recipient.username}
-          recipientAvatar={recipient.avatar}
+          recipientAvatar={recipient.avatar || ""}
           isOnline={item.isOnline || recipient.isOnline || false} // Get isOnline status
           lastMessageContent={item.lastMessage?.content}
           lastMessageTimestamp={item.lastMessage?.timestamp} // Pass timestamp (Date object)

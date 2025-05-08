@@ -1,3 +1,5 @@
+// constants/Colors.ts
+
 const tintColorLight = '#2f95dc';
 const tintColorDark = '#fff';
 
@@ -51,10 +53,26 @@ export default {
       800: '#1f2937',
       900: '#111827',
     },
-    success: '#10b981',
-    warning: '#f59e0b',
-    error: '#ef4444',
-    info: '#3b82f6',
+    success: '#10b981', // Individual success color
+    warning: '#f59e0b', // Individual warning color
+    error: '#ef4444',   // Individual error color
+    info: '#3b82f6',    // Individual info color (this is a blue)
+
+    // --- ADD THIS BLUE SCALE TO COMMON ---
+    blue: {
+      50: '#eff6ff',
+      100: '#dbeafe',
+      200: '#bfdbfe',
+      300: '#93c5fd',
+      400: '#60a5fa',
+      500: '#3b82f6', // Using the info color value here
+      600: '#2563eb',
+      700: '#1d4ed8',
+      800: '#1e40af',
+      900: '#1e3a8a',
+      950: '#172554',
+    },
+    // --- END ADD BLUE SCALE ---
   },
   chat: {
     sent: ['#27ae60', '#2ecc71'],
@@ -62,8 +80,8 @@ export default {
     info: ['#e5e7eb', '#f3f4f6'],
   },
   connection: {
-    online: '#10b981',
-    offline: '#9ca3af',
-    pending: '#f59e0b',
+    online: '#10b981', // Matches common.success
+    offline: '#9ca3af', // Matches common.gray[400]
+    pending: '#f59e0b', // Matches common.warning
   }
 };
