@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 // API configuration
-export const API_URL = 'http://192.168.1.3:5000';
+export const API_URL = 'http://localhost:5000';
 
 // Local storage keys
 export const STORAGE_KEYS = {

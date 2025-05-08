@@ -53,7 +53,7 @@ export function AppEventListeners() {
          // Attempt to replace optimistic message if tempId is provided by backend
          if (message.tempId) {
              updatedChatMessages = chatMessages.map(msg => {
-                 if (msg.status === 'pending' && (msg._id === message.tempId || msg.id === message.tempId)) {
+                 if ((msg.status as string) === 'pending' && (msg._id === message.tempId || msg.id === message.tempId)) {
                      console.log(`AppEventListeners: Replacing optimistic message ${msg._id} with real message ${message._id} (matched by tempId).`);
                       replacedOptimistic = true;
                      return {
@@ -61,8 +61,8 @@ export function AppEventListeners() {
                          sender: message.sender, // Ensure sender structure
                          senderId: message.sender?._id || message.sender?.id || message.sender,
                          status: 'delivered', // Set status
-                          // Keep client-side optimistic readBy if backend doesn't send it
-                         readBy: msg.readBy || [],
+                          // Keep client-side optimistic read status if backend doesn't send it
+                         read: msg.read || false,
                      };
                  }
                  return msg;

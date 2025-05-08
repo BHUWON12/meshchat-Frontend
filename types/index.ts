@@ -16,16 +16,16 @@
 
   // Chat System
   export interface Chat {
-    id: string;
-    name: string;
-    avatar: string;
-    participants: string[];
-    isOnline: boolean;
+    id: string; // This is chat._id from backend
+    name: string; // This is recipient.username
+    avatar: string; // This is recipient.avatar
+    participants: any[]; // Raw participants from API, or string[] if you map them
+    isOnline: boolean; // Recipient's online status
     unreadCount: number;
     lastMessage?: LastMessage;
     connectionType: ConnectionStatus;
+    recipient: User; // IMPORTANT: The other participant's details
   }
-
   export type ConnectionStatus = 'online' | 'offline';
 
   export interface LastMessage {

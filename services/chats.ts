@@ -112,3 +112,15 @@ export async function markMessageAsRead(messageId: string): Promise<{ success: b
   const { data } = await axiosClient.patch<{ success: boolean }>(`/api/v1/messages/${messageId}/read`);
   return data;
 }
+
+// Add to chats.ts
+export async function getChatPartners(): Promise<User[]> {
+  const { data } = await axiosClient.get('/api/v1/chats/partners');
+  return data.map((user: any) => ({
+    id: user._id,
+    username: user.username,
+    avatar: user.avatar,
+    isOnline: user.isOnline,
+    lastActive: user.lastActive
+  }));
+}
