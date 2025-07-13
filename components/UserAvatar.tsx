@@ -21,7 +21,7 @@ export default function UserAvatar({
   style,
 }: UserAvatarProps) {
   const avatarUrl = uri ? uri : name ? undefined : getUserAvatar();
-  const initial = name ? getInitials(name) : '';
+  const initial = name ? String(getInitials(name) || '') : '';
   
   // Status indicator size based on avatar size
   const statusSize = Math.max(10, size / 4);
@@ -74,6 +74,8 @@ export default function UserAvatar({
     </View>
   );
 }
+
+// ...styles unchanged
 
 const styles = StyleSheet.create({
   container: {

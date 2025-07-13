@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -49,26 +50,43 @@ export default function SettingsProfileScreen() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const handleLogout = () => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-               await logout();
-            } catch (error) {
-               console.error("Logout failed:", error);
-               Alert.alert("Logout Failed", "An error occurred during logout. Please try again.");
-            }
+    // For web platform, use window.confirm instead of Alert.alert
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to log out?');
+      if (confirmed) {
+        performLogout();
+      }
+    } else {
+      Alert.alert(
+        'Log Out',
+        'Are you sure you want to log out?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Log Out',
+            style: 'destructive',
+            onPress: performLogout,
           },
-        },
-      ],
-      { cancelable: true }
-    );
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const performLogout = async () => {
+    try {
+      console.log('[Settings] Starting logout process...');
+      await logout();
+      console.log('[Settings] Logout completed successfully');
+      // The navigation should happen automatically via the AuthContext
+    } catch (error) {
+      console.error("[Settings] Logout failed:", error);
+      if (Platform.OS === 'web') {
+        alert("Logout Failed: An error occurred during logout. Please try again.");
+      } else {
+        Alert.alert("Logout Failed", "An error occurred during logout. Please try again.");
+      }
+    }
   };
 
   const handleClearChat = () => {
@@ -82,7 +100,7 @@ export default function SettingsProfileScreen() {
           style: 'destructive',
           onPress: () => {
             console.log("Clearing chat history...");
-             Alert.alert('Success', 'Chat history cleared (placeholder)');
+            Alert.alert('Success', 'Chat history cleared (placeholder)');
           },
         },
       ]
@@ -110,8 +128,8 @@ export default function SettingsProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!user) {
-        Alert.alert('Error', 'User not logged in.');
-        return;
+      Alert.alert('Error', 'User not logged in.');
+      return;
     }
 
     setIsSavingProfile(true);
@@ -122,10 +140,10 @@ export default function SettingsProfileScreen() {
     if (avatarUri !== user.avatar) updatedData.avatar = avatarUri;
 
     if (Object.keys(updatedData).length === 0) {
-        console.log("No profile changes to save.");
-        setIsEditing(false);
-        setIsSavingProfile(false);
-        return;
+      console.log("No profile changes to save.");
+      setIsEditing(false);
+      setIsSavingProfile(false);
+      return;
     }
 
     try {
@@ -140,31 +158,33 @@ export default function SettingsProfileScreen() {
       setAvatarUri(user?.avatar || '');
       Alert.alert('Error', 'Failed to update profile.');
     } finally {
-       setIsSavingProfile(false);
+      setIsSavingProfile(false);
     }
   };
 
   // Helper function to render a setting item row
-  // Added isComingSoon prop
   const renderSettingItem = (
     icon: React.ReactNode,
     title: string,
     description: string | null,
     rightElement: React.ReactNode,
     onPress: (() => void) | undefined,
-    isComingSoon: boolean = false // Default to false
+    isComingSoon: boolean = false
   ) => (
     <TouchableOpacity
-      style={[styles.settingItem, isComingSoon && styles.settingItemComingSoon]} // Apply coming soon style
-      onPress={isComingSoon ? undefined : onPress} // Disable press if coming soon
-      disabled={isComingSoon || !onPress} // Disable if coming soon or no onPress
+      style={[styles.settingItem, isComingSoon && styles.settingItemComingSoon]}
+      onPress={isComingSoon ? undefined : onPress}
+      disabled={isComingSoon || !onPress}
     >
-      <View style={[styles.settingIcon, isComingSoon && styles.settingIconComingSoon]}>{icon}</View> {/* Apply coming soon style */}
+      <View style={[styles.settingIcon, isComingSoon && styles.settingIconComingSoon]}>{icon}</View>
       <View style={styles.settingContent}>
-        <Text style={[styles.settingTitle, isComingSoon && styles.settingTextComingSoon]}>{title}</Text> {/* Apply coming soon style */}
-        {description ? <Text style={[styles.settingDescription, isComingSoon && styles.settingTextComingSoon]}>{description}</Text> : null} {/* Apply coming soon style */}
+        <Text style={[styles.settingTitle, isComingSoon && styles.settingTextComingSoon]}>{title}</Text>
+        {description ? (
+          <Text style={[styles.settingDescription, isComingSoon && styles.settingTextComingSoon]}>
+            {description}
+          </Text>
+        ) : null}
       </View>
-      {/* Conditionally render right element or null if coming soon */}
       {isComingSoon ? null : rightElement}
     </TouchableOpacity>
   );
@@ -172,7 +192,6 @@ export default function SettingsProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-
         <View style={styles.header}>
           <Text style={styles.title}>Settings & Profile</Text>
         </View>
@@ -187,19 +206,22 @@ export default function SettingsProfileScreen() {
               </View>
             )}
             <View style={styles.cameraButton}>
-               <Camera size={16} color={Colors.common.white} />
+              <Camera size={16} color={Colors.common.white} />
             </View>
           </TouchableOpacity>
 
           <View style={styles.profileInfo}>
             <Text style={styles.username}>{user?.username || 'Guest'}</Text>
             <Text style={styles.email}>{user?.email || 'N/A'}</Text>
-            <TouchableOpacity style={styles.editButton} onPress={() => {
-                 setUsername(user?.username || '');
-                 setBio(user?.bio || '');
-                 setAvatarUri(user?.avatar || '');
-                 setIsEditing(true);
-            }}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                setUsername(user?.username || '');
+                setBio(user?.bio || '');
+                setAvatarUri(user?.avatar || '');
+                setIsEditing(true);
+              }}
+            >
               <Edit2 size={20} color={Colors.primary[500]} />
               <Text style={styles.editButtonText}>Edit Profile</Text>
             </TouchableOpacity>
@@ -210,60 +232,51 @@ export default function SettingsProfileScreen() {
 
         {/* Preferences Section - Mark as Coming Soon */}
         <View style={styles.section}>
-          {/* Apply coming soon style to section title */}
           <Text style={[styles.sectionTitle, styles.sectionTitleComingSoon]}>Preferences (Coming Soon)</Text>
-
-          {/* Notifications Setting - Mark as Coming Soon */}
           {renderSettingItem(
             <Bell size={22} color={Colors.primary[600]} />,
             'Notifications',
             'Get notified about new messages',
-            <Switch // Keep Switch here but it won't be rendered if isComingSoon is true
+            <Switch
               value={notifications}
               onValueChange={setNotifications}
               trackColor={{ false: Colors.common.gray[300], true: Colors.primary[300] }}
               thumbColor={notifications ? Colors.primary[500] : Colors.common.gray[100]}
             />,
             undefined,
-            true // Mark as Coming Soon
+            true
           )}
-
-          {/* Dark Mode Setting - Mark as Coming Soon */}
           {renderSettingItem(
             <Moon size={22} color={Colors.primary[600]} />,
             'Dark Mode',
             'Change app appearance',
-            <Switch // Keep Switch here but it won't be rendered if isComingSoon is true
+            <Switch
               value={darkMode}
               onValueChange={setDarkMode}
               trackColor={{ false: Colors.common.gray[300], true: Colors.primary[300] }}
               thumbColor={darkMode ? Colors.primary[500] : Colors.common.gray[100]}
             />,
             undefined,
-            true // Mark as Coming Soon
+            true
           )}
         </View>
 
         {/* Data Section - Mark as Coming Soon */}
         <View style={styles.section}>
-           {/* Apply coming soon style to section title */}
           <Text style={[styles.sectionTitle, styles.sectionTitleComingSoon]}>Data (Coming Soon)</Text>
-
-          {/* Clear Chat History Setting - Mark as Coming Soon */}
           {renderSettingItem(
             <Trash2 size={22} color={Colors.common.error} />,
             'Clear Chat History',
             'Delete all your conversations',
-            <ChevronRight size={18} color={Colors.common.gray[400]} />, // Keep Chevron here but it won't be rendered
+            <ChevronRight size={18} color={Colors.common.gray[400]} />,
             handleClearChat,
-            true // Mark as Coming Soon
+            true
           )}
         </View>
 
-        {/* About Section - Keep as is */}
+        {/* About Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
-
           {renderSettingItem(
             <Shield size={22} color={Colors.primary[600]} />,
             'Privacy Policy',
@@ -271,7 +284,6 @@ export default function SettingsProfileScreen() {
             <ChevronRight size={18} color={Colors.common.gray[400]} />,
             () => { console.log("Navigate to Privacy Policy"); }
           )}
-
           {renderSettingItem(
             <Info size={22} color={Colors.primary[600]} />,
             'About MeshChat',
@@ -282,20 +294,26 @@ export default function SettingsProfileScreen() {
         </View>
 
         <TouchableOpacity
-           style={styles.logoutButton}
-           onPress={handleLogout}
-           disabled={isLoading}
+          style={styles.logoutButton}
+          onPress={() => {
+            console.log('[Settings] Logout button pressed!');
+            console.log('[Settings] isLoading:', isLoading);
+            handleLogout();
+          }}
+          onPressIn={() => console.log('[Settings] Logout button pressed in!')}
+          onPressOut={() => console.log('[Settings] Logout button pressed out!')}
+          disabled={isLoading}
+          activeOpacity={0.7}
         >
           {isLoading ? (
-             <ActivityIndicator size="small" color={Colors.common.error} style={{ marginRight: 8 }} />
+            <ActivityIndicator size="small" color={Colors.common.white} style={{ marginRight: 8 }} />
           ) : (
-             <LogOut size={20} color={Colors.common.error} style={{ marginRight: 8 }} />
+            <LogOut size={20} color={Colors.common.white} style={{ marginRight: 8 }} />
           )}
           <Text style={styles.logoutText}>{isLoading ? "Logging Out..." : "Log Out"}</Text>
         </TouchableOpacity>
 
-         <View style={{ height: 50 }} />
-
+        <View style={{ height: 50 }} />
       </ScrollView>
 
       <Modal
@@ -309,10 +327,13 @@ export default function SettingsProfileScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => {
-                 setIsEditing(false);
-                 setIsSavingProfile(false);
-            }}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => {
+                setIsEditing(false);
+                setIsSavingProfile(false);
+              }}
+            >
               <X size={24} color={Colors.common.gray[700]} />
             </TouchableOpacity>
 
@@ -320,17 +341,17 @@ export default function SettingsProfileScreen() {
 
             <View style={styles.modalForm}>
               <TouchableOpacity style={styles.avatarContainer} onPress={handleImagePick}>
-                 {avatarUri ? (
-                   <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                 ) : (
-                   <View style={styles.avatarPlaceholder}>
-                     <User size={40} color={Colors.common.gray[400]} />
-                   </View>
-                 )}
-                 <View style={styles.cameraButton}>
-                   <Camera size={16} color={Colors.common.white} />
-                 </View>
-               </TouchableOpacity>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <User size={40} color={Colors.common.gray[400]} />
+                  </View>
+                )}
+                <View style={styles.cameraButton}>
+                  <Camera size={16} color={Colors.common.white} />
+                </View>
+              </TouchableOpacity>
 
               <TextInput
                 style={styles.input}
@@ -365,11 +386,10 @@ export default function SettingsProfileScreen() {
                 <Button
                   title={isSavingProfile ? "Saving..." : "Save Changes"}
                   onPress={handleSaveProfile}
-                  style={{...styles.actionButton, ...styles.saveButton}}
+                  style={{ ...styles.actionButton, ...styles.saveButton }}
                   gradient
                   disabled={isSavingProfile}
-                >
-                </Button>
+                />
               </View>
             </View>
           </View>
@@ -558,13 +578,15 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     marginTop: 32,
     marginHorizontal: 16,
-    backgroundColor: Colors.common.gray[100],
+    backgroundColor: Colors.common.error,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.common.error,
   },
   logoutText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.common.error,
+    color: Colors.common.white,
     fontFamily: 'Inter-SemiBold',
   },
 

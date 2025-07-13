@@ -1,15 +1,49 @@
-import React from 'react';
-import { View, Text, Switch, StyleSheet } from 'react-native';
-import { Wifi, WifiOff } from 'lucide-react-native';
+import React, { useCallback } from 'react';
+import { View, Text, Switch, StyleSheet, TouchableOpacity } from 'react-native';
+import { Wifi, WifiOff, AlertCircle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../constants/Colors';
 import { useSocket } from '../context/SocketContext';
+import { useToast } from '../context/ToastContext';
 
 export default function ConnectionToggle() {
   const { isOnlineMode, setIsOnlineMode, isConnected } = useSocket();
+  const { showToast } = useToast();
   
-  const handleToggle = (value: boolean) => {
+  const handleToggle = useCallback((value: boolean) => {
+    console.log(`ConnectionToggle: Toggling to ${value ? 'online' : 'offline'} mode`);
     setIsOnlineMode(value);
+    
+    // Show feedback to user
+    if (value) {
+      showToast?.('Switching to online mode...', 'info');
+    } else {
+      showToast?.('Switching to offline mode...', 'info');
+    }
+  }, [setIsOnlineMode, showToast]);
+  
+  const getStatusText = () => {
+    if (!isOnlineMode) {
+      return 'Bluetooth/Wi-Fi Direct';
+    }
+    
+    if (isConnected) {
+      return 'Connected to server';
+    } else {
+      return 'Connecting...';
+    }
+  };
+  
+  const getStatusColor = () => {
+    if (!isOnlineMode) {
+      return 'rgba(255, 255, 255, 0.7)';
+    }
+    
+    if (isConnected) {
+      return 'rgba(255, 255, 255, 0.9)';
+    } else {
+      return 'rgba(255, 255, 255, 0.6)';
+    }
   };
   
   return (
@@ -22,7 +56,11 @@ export default function ConnectionToggle() {
       <View style={styles.content}>
         <View style={styles.iconContainer}>
           {isOnlineMode ? (
-            <Wifi size={20} color={Colors.common.white} />
+            isConnected ? (
+              <Wifi size={20} color={Colors.common.white} />
+            ) : (
+              <AlertCircle size={20} color={Colors.common.white} />
+            )
           ) : (
             <WifiOff size={20} color={Colors.common.white} />
           )}
@@ -32,13 +70,8 @@ export default function ConnectionToggle() {
           <Text style={styles.title}>
             {isOnlineMode ? 'Online Mode' : 'Offline Mode'}
           </Text>
-          <Text style={styles.subtitle}>
-            {isOnlineMode 
-              ? isConnected 
-                ? 'Connected to server' 
-                : 'Connecting...'
-              : 'Bluetooth/Wi-Fi Direct'
-            }
+          <Text style={[styles.subtitle, { color: getStatusColor() }]}>
+            {getStatusText()}
           </Text>
         </View>
         

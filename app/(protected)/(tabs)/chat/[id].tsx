@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Send, Plus, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, Send, Plus, Image as ImageIcon, ChevronDown } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 // Check if Audio is available before importing or using
 import * as Audio from 'expo-av'; // Use expo-av for consistency, expo-audio might be deprecated or an alias
@@ -90,6 +90,12 @@ export default function ChatScreen() {
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null); // Use ChatMessage type with FlatList ref
   const chatSoundRef = useRef<Audio.Sound | null>(null); // Ref for chat sound instance
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
+  // Derived state
+  const isEmpty = !loading && currentChatMessages.length === 0;
 
   // --- Sound Loading ---
   useEffect(() => {
@@ -98,7 +104,7 @@ export default function ChatScreen() {
       if (Audio && Audio.Sound) { // ADDED CHECK
           try {
             // Use require for local assets
-            const { sound } = await Audio.Sound.createAsync(require("../../../../assets/sounds/chat.mp3"));
+            const { sound } = await Audio.Sound.createAsync(require("../../../assets/sounds/chat.mp3"));
             chatSoundRef.current = sound;
             console.log("ChatScreen: Chat sound loaded.");
           } catch (error) {
@@ -116,6 +122,72 @@ export default function ChatScreen() {
       chatSoundRef.current = null;
     };
   }, []); // Empty dependency array
+
+  // --- Keyboard handling for auto-scroll ---
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      // Auto-scroll when keyboard appears
+      setTimeout(() => {
+        if (flatListRef.current && currentChatMessages.length > 0) {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }
+      }, 100);
+    });
+
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
+  }, [currentChatMessages.length]);
+
+  // --- Enhanced auto-scroll functionality ---
+  const scrollToBottom = useCallback((animated = true) => {
+    if (flatListRef.current && currentChatMessages.length > 0) {
+      console.log("ChatScreen: Scrolling to bottom");
+      flatListRef.current.scrollToEnd({ animated });
+    }
+  }, [currentChatMessages.length]);
+
+  // Auto-scroll when new messages arrive - ALWAYS scroll for new messages
+  useEffect(() => {
+    if (currentChatMessages.length > 0) {
+      // Use a small delay to ensure the message is rendered
+      const timer = setTimeout(() => {
+        scrollToBottom(true);
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [currentChatMessages, scrollToBottom]);
+
+  // Initial scroll to bottom when chat first loads
+  useEffect(() => {
+    if (!loading && currentChatMessages.length > 0 && flatListRef.current) {
+      console.log("ChatScreen: Initial scroll to bottom");
+      // Use a longer delay for initial load to ensure everything is rendered
+      const timer = setTimeout(() => {
+        scrollToBottom(false); // No animation for initial load
+        setShouldAutoScroll(true); // Ensure auto-scroll is enabled
+      }, 200);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loading, currentChatMessages.length, scrollToBottom]);
+
+  // Handle scroll events to determine if user is at bottom
+  const handleScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const paddingToBottom = 20; // Threshold for considering user at bottom
+    
+    const isAtBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - paddingToBottom;
+    setShouldAutoScroll(isAtBottom);
+    setShowScrollToBottom(!isAtBottom && currentChatMessages.length > 5); // Show button if not at bottom and have enough messages
+  }, [currentChatMessages.length]);
 
   // --- Fetch chat details and messages ---
   useFocusEffect(
@@ -181,6 +253,17 @@ export default function ChatScreen() {
     }, [id, user, socket, isConnected, fetchMessages, showToast])
   );
 
+  // Focus effect to scroll to bottom when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading && currentChatMessages.length > 0) {
+        console.log("ChatScreen: Screen focused, scrolling to bottom");
+        setShouldAutoScroll(true);
+        setTimeout(() => scrollToBottom(false), 300);
+      }
+    }, [loading, currentChatMessages.length, scrollToBottom])
+  );
+
     // --- Derive messages for the current chat from the global messages object ---
     useEffect(() => {
         console.log("ChatScreen: Running effect to filter messages for current chat.");
@@ -228,6 +311,11 @@ export default function ChatScreen() {
                  // Pass the chat ID as well
                  markMessageAsRead(message._id, id); // Ensure markMessageAsRead expects chatId
               }
+
+              // Force auto-scroll for new incoming messages
+              console.log('ChatScreen: New message received, forcing auto-scroll');
+              setShouldAutoScroll(true);
+              setTimeout(() => scrollToBottom(true), 150);
           } else {
                console.log(`ChatScreen: Received message ${message._id || message.tempId} is NOT for the current chat ${id}.`);
           }
@@ -254,17 +342,6 @@ export default function ChatScreen() {
       };
 
     }, [socket, id, user, chatSoundRef.current, markMessageAsRead, recipient, updateMessageReadStatus]);
-
-
-    useEffect(() => {
-      if (currentChatMessages.length > 0 && flatListRef.current) {
-         setTimeout(() => {
-             console.log("ChatScreen: Scrolling to end.");
-             flatListRef.current?.scrollToEnd({ animated: true });
-         }, 100);
-      }
-       console.log("ChatScreen: messages state updated, possibly triggering scroll.");
-    }, [currentChatMessages]);
 
 
   const handleSendMessage = useCallback(async () => {
@@ -317,6 +394,9 @@ export default function ChatScreen() {
       setMessageText('');
       Keyboard.dismiss();
 
+      // Force scroll to bottom for own messages
+      setShouldAutoScroll(true);
+      setTimeout(() => scrollToBottom(true), 50);
 
       const messagePayloadForBackend = {
            chatId: id,
@@ -360,7 +440,7 @@ export default function ChatScreen() {
         );
        showToast?.("Error sending message due to app issue or network.");
     }
-  }, [messageText, id, user, socket, isConnected, sendSocketMessage, showToast, setCurrentChatMessages]);
+  }, [messageText, id, user, socket, isConnected, sendSocketMessage, showToast, setCurrentChatMessages, scrollToBottom]);
 
 
   const handleSendImage = async () => {
@@ -386,7 +466,7 @@ export default function ChatScreen() {
     }
   };
 
-  const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
+  const renderMessage = useCallback(({ item, index }: { item: ChatMessage; index: number }) => {
     const currentUserId = user?._id || user?.id || '';
     const isOwn = isOwnMessage(item, currentUserId);
     const prevMessage = currentChatMessages[index - 1];
@@ -398,15 +478,37 @@ export default function ChatScreen() {
       <ChatBubble
         message={item}
         isOwn={isOwn}
-        showAvatar={!isConsecutive}
         isConsecutive={isConsecutive}
-        sender={senderInfo}
-        currentUserId={currentUserId}
+        senderInfo={senderInfo}
       />
     );
-  };
+  }, [currentChatMessages, user, recipient]);
 
-  const isEmpty = currentChatMessages.length === 0 && !loading;
+  // Memoize the keyExtractor function
+  const keyExtractor = useCallback((item: ChatMessage) => {
+    return item._id || item.id || item.tempId || item.createdAt?.toString() || Math.random().toString();
+  }, []);
+
+  // Memoize the getItemLayout function
+  const getItemLayout = useCallback((data: any, index: number) => ({
+    length: 80, // Approximate height of each message
+    offset: 80 * index,
+    index,
+  }), []);
+
+  // Memoize the onContentSizeChange function
+  const onContentSizeChange = useCallback(() => {
+    if (shouldAutoScroll) {
+      setTimeout(() => scrollToBottom(false), 50);
+    }
+  }, [shouldAutoScroll, scrollToBottom]);
+
+  // Memoize the onLayout function
+  const onLayout = useCallback(() => {
+    if (shouldAutoScroll && currentChatMessages.length > 0) {
+      setTimeout(() => scrollToBottom(false), 100);
+    }
+  }, [shouldAutoScroll, currentChatMessages.length, scrollToBottom]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -463,13 +565,39 @@ export default function ChatScreen() {
         ) : isEmpty ? (
             <EmptyState type="messages" />
         ) : (
-            <FlatList
-              ref={flatListRef}
-              data={currentChatMessages}
-              renderItem={renderMessage}
-              keyExtractor={(item) => item._id || item.id || item.tempId || item.createdAt?.toString() || Math.random().toString()}
-              contentContainerStyle={styles.messagesContainer}
-            />
+            <View style={styles.messagesWrapper}>
+              <FlatList
+                ref={flatListRef}
+                data={currentChatMessages}
+                renderItem={renderMessage}
+                keyExtractor={keyExtractor}
+                contentContainerStyle={styles.messagesContainer}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={10}
+                windowSize={10}
+                initialNumToRender={10}
+                getItemLayout={getItemLayout}
+                onContentSizeChange={onContentSizeChange}
+                onLayout={onLayout}
+              />
+              
+              {/* Scroll to bottom button */}
+              {showScrollToBottom && (
+                <TouchableOpacity
+                  style={styles.scrollToBottomButton}
+                  onPress={() => {
+                    setShouldAutoScroll(true);
+                    scrollToBottom(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <ChevronDown size={20} color={Colors.common.white} />
+                </TouchableOpacity>
+              )}
+            </View>
          )}
 
 
@@ -610,5 +738,21 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: Colors.primary[300],
+  },
+  messagesWrapper: {
+    position: 'relative',
+    flex: 1,
+  },
+  scrollToBottomButton: {
+    position: 'absolute',
+    bottom: 80, // Adjust as needed, position it above the input area
+    right: 20, // Adjust as needed, position it to the right of the input area
+    backgroundColor: Colors.primary[500],
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });

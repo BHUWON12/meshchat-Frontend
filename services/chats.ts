@@ -1,5 +1,6 @@
 import axiosClient from './axiosClient';
 import { Chat, ConnectionStatus, Message } from '../types/index';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper to map API response to Chat
 function mapChatResponse(chat: any, currentUserId: string): Chat {
@@ -51,9 +52,11 @@ export async function createChat(payload: {
 }
 
 export async function initiateChat(userId: string, currentUserId: string): Promise<Chat> {
+  // Use AsyncStorage for token (works on native)
+  const token = await AsyncStorage.getItem('token');
   const { data } = await axiosClient.post(`/api/v1/chats/initiate/${userId}`, {}, {
     headers: {
-      Authorization: `Bearer ${localStorage.getItem('token')}`
+      Authorization: token ? `Bearer ${token}` : undefined
     }
   });
   return mapChatResponse({

@@ -159,11 +159,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    console.log('[Auth] Starting logout process...');
     try {
+      // Clear the token first
       await handleTokenUpdate(null);
+      console.log('[Auth] Token cleared successfully');
+      
+      // Clear user state
       setUser(null);
+      console.log('[Auth] User state cleared successfully');
+      
+      // Force a navigation update by triggering a re-render
+      // This ensures the app navigates to the auth screen
+      console.log('[Auth] Logout completed successfully');
+      
+      // Add a small delay to ensure state updates are processed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
     } catch (error) {
       console.error('[Auth] Logout failed:', error);
+      // Even if there's an error, we should still clear the local state
+      setUser(null);
       throw error;
     }
   };

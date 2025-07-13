@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
-// API configuration
-export const API_URL = 'http://192.168.1.11:5000';
+// API configuration - Updated to match axiosClient.ts
+export const API_URL = 'https://comparative-lizzy-bhuwonsorg-d68d66cf.koyeb.app';
 
 // Local storage keys
 export const STORAGE_KEYS = {

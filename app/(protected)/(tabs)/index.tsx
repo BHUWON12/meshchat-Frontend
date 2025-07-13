@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -64,7 +64,7 @@ export default function ChatsScreen() {
     async function loadSound() {
       try {
         const { sound } = await Audio.Sound.createAsync(
-          require('../../../../assets/sounds/chat.mp3')
+          require('../../../assets/sounds/chat.mp3')
         );
         chatSoundRef.current = sound;
       } catch (error) {
@@ -165,60 +165,42 @@ export default function ChatsScreen() {
 
 
   // renderChatListItem needs to be adapted for MappedChat
-  const renderChatListItem = useCallback(
-    ({ item }: { item: MappedChat }) => { // item is now MappedChat
-      console.log('Rendering MappedChat item:', item); // Log to see the structure
+  const renderChatListItem = useCallback(({ item }: { item: MappedChat }) => {
+    const currentUserId = user?._id || user?.id;
+    if (!currentUserId) return null;
 
-      // With MappedChat, participant info (name, avatar, isOnline)
-      // should ideally be directly on the 'item' object,
-      // or on item.recipient if your mapChatResponse adds it.
+    // Find the other participant (not the current user)
+    const recipient = item.participants.find(
+      (p: any) => (p._id || p.id) !== currentUserId
+    );
 
-      // Assuming mapChatResponse puts recipient details onto MappedChat:
-      // (e.g., item.name is recipient's name, item.avatar is recipient's avatar)
+    if (!recipient) {
+      console.warn(`ChatScreen: No recipient found for chat ${item.id}`);
+      return null;
+    }
 
-      if (!item || !item.id) { // Basic check for a valid mapped chat item
-          console.warn("Invalid MappedChat item for rendering:", item);
-          return null;
-      }
+    return (
+      <ChatListItem
+        chatId={item.id} // Pass ID
+        recipientName={recipient.username}
+        recipientAvatar={recipient.avatar || ""}
+        isOnline={item.isOnline || recipient.isOnline || false} // Get isOnline status
+        lastMessageContent={item.lastMessage?.content}
+        lastMessageTimestamp={item.lastMessage?.timestamp} // Pass timestamp (Date object)
+        unreadCount={item.unreadCount}
+        onPress={() => router.push(`/chat/${item.id}`)} // Use item.id for navigation
+      />
+    );
+  }, [router, user?._id, user?.id]);
 
-      // The 'recipient' field in your mapChatResponse is key.
-      // Let's assume types/index.ts#Chat includes a recipient field like:
-      // recipient: { _id: string, username: string, avatar?: string, isOnline?: boolean }
-      // And that mapChatResponse populates this.
+  // Memoize the keyExtractor function
+  const keyExtractor = useCallback((item: MappedChat) => item.id, []);
 
-      const recipient = item.recipient as ParticipantInfo; // Cast if necessary, ensure type safety
+  // Memoize the isEmpty calculation
+  const isEmpty = useMemo(() => !loading && !refreshing && chats.length === 0, [loading, refreshing, chats.length]);
 
-      if (!recipient) {
-          console.warn("MappedChat item is missing recipient details:", item);
-          // Fallback or render differently if recipient info is missing
-          // This shouldn't happen if mapChatResponse works correctly.
-          return (
-            <View style={{ padding: 10, backgroundColor: 'orange' }}>
-              <Text>Chat item {item.id} missing recipient data.</Text>
-            </View>
-          );
-      }
-
-      return (
-        <ChatListItem
-          // Pass props compatible with ChatListItem's expectations
-          // You'll need to adjust ChatListItem's props interface
-          chatId={item.id} // Pass ID
-          recipientName={recipient.username}
-          recipientAvatar={recipient.avatar || ""}
-          isOnline={item.isOnline || recipient.isOnline || false} // Get isOnline status
-          lastMessageContent={item.lastMessage?.content}
-          lastMessageTimestamp={item.lastMessage?.timestamp} // Pass timestamp (Date object)
-          unreadCount={item.unreadCount}
-          onPress={() => router.push(`/chat/${item.id}`)} // Use item.id for navigation
-        />
-      );
-    },
-    [router] // user no longer needed here if recipient info is on item
-  );
-
-  const isEmpty = !loading && !refreshing && chats.length === 0; // Simplified isEmpty
-  const navigateToConnections = () => router.push('/(protected)/(tabs)/connections');
+  // Memoize the navigateToConnections function
+  const navigateToConnections = useCallback(() => router.push('/(protected)/(tabs)/connections'), [router]);
 
   if (loading && chats.length === 0 && !refreshing) { // Initial loading state
     return (
@@ -249,7 +231,7 @@ export default function ChatsScreen() {
       <FlatList
         data={chats}
         renderItem={renderChatListItem}
-        keyExtractor={(item) => item.id} // Use item.id for MappedChat
+        keyExtractor={keyExtractor} // Use item.id for MappedChat
         contentContainerStyle={isEmpty ? styles.emptyListContent : styles.listContent}
         refreshControl={
           <RefreshControl

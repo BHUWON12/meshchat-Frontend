@@ -35,6 +35,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const maxToasts = 3;
       return [...prev.slice(-maxToasts + 1), newToast];
     });
+
+    // Auto-dismiss toast after duration
+    setTimeout(() => {
+      hideToast(id);
+    }, duration);
   };
 
   const hideToast = (id: string) => {
@@ -42,16 +47,40 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   };
 
   const getToastBackground = (type: ToastType) => {
-    switch (type) {
-      case 'success':
-        return theme.colors.success[500];
-      case 'error':
-        return theme.colors.error[500];
-      case 'warning':
-        return theme.colors.warning[500];
-      case 'info':
-      default:
-        return theme.colors.primary[500];
+    // Add null checks and fallback colors
+    if (!theme || !theme.colors) {
+      // Fallback colors if theme is not available
+      const fallbackColors = {
+        success: '#22c55e',
+        error: '#ef4444',
+        warning: '#f59e0b',
+        info: '#3b82f6',
+      };
+      return fallbackColors[type] || fallbackColors.info;
+    }
+
+    try {
+      switch (type) {
+        case 'success':
+          return theme.colors.success?.[500] || '#22c55e';
+        case 'error':
+          return theme.colors.error?.[500] || '#ef4444';
+        case 'warning':
+          return theme.colors.warning?.[500] || '#f59e0b';
+        case 'info':
+        default:
+          return theme.colors.primary?.[500] || '#3b82f6';
+      }
+    } catch (error) {
+      console.warn('ToastContext: Error getting toast background color:', error);
+      // Fallback colors
+      const fallbackColors = {
+        success: '#22c55e',
+        error: '#ef4444',
+        warning: '#f59e0b',
+        info: '#3b82f6',
+      };
+      return fallbackColors[type] || fallbackColors.info;
     }
   };
 

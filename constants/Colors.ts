@@ -10,6 +10,8 @@ export default {
     tint: tintColorLight,
     tabIconDefault: '#ccc',
     tabIconSelected: tintColorLight,
+    textSecondary: '#6b7280',
+    card: '#ffffff',
   },
   dark: {
     text: '#fff',
@@ -17,6 +19,8 @@ export default {
     tint: tintColorDark,
     tabIconDefault: '#ccc',
     tabIconSelected: tintColorDark,
+    textSecondary: '#9ca3af',
+    card: '#1f2937',
   },
   primary: {
     50: '#f0f9f1',
@@ -83,5 +87,10 @@ export default {
     online: '#10b981', // Matches common.success
     offline: '#9ca3af', // Matches common.gray[400]
     pending: '#f59e0b', // Matches common.warning
-  }
+  },
+  // Additional colors for status indicators
+  success: '#10b981',
+  error: '#ef4444',
+  warning: '#f59e0b',
+  info: '#3b82f6',
 };

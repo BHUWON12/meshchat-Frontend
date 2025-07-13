@@ -1,5 +1,5 @@
 // frontend/context/MessageContext.tsx
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import {
   getChats as apiGetChats,
   getMessages as apiGetMessages,
@@ -46,7 +46,9 @@ const MessageContext = createContext<MessageContextType | undefined>(undefined);
 export function MessageProvider({ children }: { children: ReactNode }) {
   // Access the current authenticated user
   const { user } = useAuth();
-  const currentUserId = user?._id || user?.id;
+  
+  // Memoize current user ID to prevent unnecessary re-renders
+  const currentUserId = useMemo(() => user?._id || user?.id, [user?._id, user?.id]);
 
   // --- State ---
   // State for the list of chats
@@ -58,7 +60,25 @@ export function MessageProvider({ children }: { children: ReactNode }) {
   // State for loading indicator
   const [loading, setLoading] = useState(false);
 
-  // Removed: Accessing useSocket directly within the Provider component
+  // Memoize getter functions to prevent unnecessary re-renders
+  const getChat = useCallback((chatId: string) => {
+     if (!chatId) return undefined;
+    return chats.find(chat => chat.id === chatId || chat._id === chatId); // Check both 'id' and '_id'
+  }, [chats]); // Recreate if chats state changes
+
+  // Get the array of messages for a specific chat ID from the messages state
+  const getChatMessages = useCallback((chatId: string) => {
+     if (!chatId) return [];
+    return messages[chatId] || []; // Return the messages array for the chat ID, or empty array if none
+  }, [messages]); // Recreate if messages state changes
+
+  // Get a chat object by one of its participant's user ID from the chats state
+  const getChatByParticipant = useCallback((userId: string) => {
+     if (!userId) return undefined;
+    return chats.find(chat =>
+      chat.participants.some((p: any) => (p._id || p.id) === userId) // Check participants array
+    );
+  }, [chats]); // Recreate if chats state changes
 
   // --- Data Fetching Functions (useCallback for memoization) ---
 
@@ -120,28 +140,6 @@ export function MessageProvider({ children }: { children: ReactNode }) {
       // TODO: Handle error
     }
   }, []); // No dependencies needed if apiGetMessages is stable
-
-  // --- Getter Functions (useCallback for memoization) ---
-
-  // Get a specific chat object by its ID from the chats state
-  const getChat = useCallback((chatId: string) => {
-     if (!chatId) return undefined;
-    return chats.find(chat => chat.id === chatId || chat._id === chatId); // Check both 'id' and '_id'
-  }, [chats]); // Recreate if chats state changes
-
-  // Get the array of messages for a specific chat ID from the messages state
-  const getChatMessages = useCallback((chatId: string) => {
-     if (!chatId) return [];
-    return messages[chatId] || []; // Return the messages array for the chat ID, or empty array if none
-  }, [messages]); // Recreate if messages state changes
-
-  // Get a chat object by one of its participant's user ID from the chats state
-  const getChatByParticipant = useCallback((userId: string) => {
-     if (!userId) return undefined;
-    return chats.find(chat =>
-      chat.participants.some((p: any) => (p._id || p.id) === userId) // Check participants array
-    );
-  }, [chats]); // Recreate if chats state changes
 
   // --- State Update Functions (Called by AppEventListeners or other components) ---
   // These functions update the state within this context based on external events (like socket events).
@@ -284,38 +282,44 @@ export function MessageProvider({ children }: { children: ReactNode }) {
 
   // Removed socket event listeners useEffect from here
 
-  // --- Context value provided to consumers ---
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    chats,
+    messages,
+    userOnlineStatuses,
+    loading,
+    fetchChats,
+    fetchMessages,
+    getChat,
+    getChatMessages,
+    getChatByParticipant,
+    initiateChat,
+    setChats,
+    setMessages,
+    setUserOnlineStatus,
+    updateMessageReadStatus,
+    updateConnectionStatus,
+  }), [
+    chats,
+    messages,
+    userOnlineStatuses,
+    loading,
+    fetchChats,
+    fetchMessages,
+    getChat,
+    getChatMessages,
+    getChatByParticipant,
+    initiateChat,
+    setChats,
+    setMessages,
+    setUserOnlineStatus,
+    updateMessageReadStatus,
+    updateConnectionStatus,
+  ]);
+
   return (
-    <MessageContext.Provider
-      value={{
-        chats, // Provide the chats state
-        messages, // Provide the messages state
-        userOnlineStatuses, // <-- Provide the new state
-        loading, // Provide loading state
-
-        // Provide data fetching functions
-        fetchChats,
-        fetchMessages,
-
-        // Provide getter functions
-        getChat,
-        getChatMessages,
-        getChatByParticipant,
-
-        // Provide state setters and update functions for AppEventListeners
-        setChats, // <-- Provided
-        setMessages, // <-- Provided
-        setUserOnlineStatus, // <-- Provided
-        updateMessageReadStatus, // <-- Provided
-
-        // Provide action functions (REST based)
-        initiateChat,
-
-        // Provided if still needed
-        updateConnectionStatus,
-      }}
-    >
-      {children} {/* Render child components */}
+    <MessageContext.Provider value={contextValue}>
+      {children}
     </MessageContext.Provider>
   );
 }

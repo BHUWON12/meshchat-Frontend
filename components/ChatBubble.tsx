@@ -21,7 +21,7 @@ export default function ChatBubble({
 }: ChatBubbleProps) {
   // Format timestamp
   const timestamp = formatMessageDate(message.createdAt);
-  
+
   // Get status icon
   const getStatusIcon = () => {
     switch (message.status) {
@@ -34,7 +34,7 @@ export default function ChatBubble({
         return null;
     }
   };
-  
+
   // Render different content based on message type
   const renderMessageContent = () => {
     switch (message.type) {
@@ -48,10 +48,14 @@ export default function ChatBubble({
         );
       case MessageType.TEXT:
       default:
-        return <Text style={isOwn ? styles.ownMessageText : styles.otherMessageText}>{message.content}</Text>;
+        return (
+          <Text style={isOwn ? styles.ownMessageText : styles.otherMessageText}>
+            {message.content ? String(message.content) : ''}
+          </Text>
+        );
     }
   };
-  
+
   // Bubble container with gradient for own messages
   const MessageContainer = ({ children }: { children: React.ReactNode }) => {
     if (isOwn) {
@@ -63,33 +67,35 @@ export default function ChatBubble({
           style={[
             styles.messageBubble,
             styles.ownMessageBubble,
-            isConsecutive && styles.consecutiveMessage
+            isConsecutive && styles.consecutiveMessage,
           ]}
         >
           {children}
         </LinearGradient>
       );
     }
-    
+
     return (
       <View
         style={[
           styles.messageBubble,
           styles.otherMessageBubble,
-          isConsecutive && styles.consecutiveMessage
+          isConsecutive && styles.consecutiveMessage,
         ]}
       >
         {children}
       </View>
     );
   };
-  
+
   return (
     <View style={[styles.container, isOwn ? styles.ownContainer : styles.otherContainer]}>
       <MessageContainer>
         {renderMessageContent()}
         <View style={[styles.footer, isOwn ? styles.ownFooter : styles.otherFooter]}>
-          <Text style={isOwn ? styles.ownTimestamp : styles.otherTimestamp}>{timestamp}</Text>
+          <Text style={isOwn ? styles.ownTimestamp : styles.otherTimestamp}>
+            {timestamp ? String(timestamp) : ''}
+          </Text>
           {isOwn && getStatusIcon()}
         </View>
       </MessageContainer>

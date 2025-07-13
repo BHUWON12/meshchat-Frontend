@@ -9,7 +9,7 @@ if (Constants.expoConfig?.extra?.apiUrl) {
   API_BASE_URL = Constants.expoConfig.extra.apiUrl;
 } else {
   // Use your laptop's local IP address and backend port for local development
-  API_BASE_URL = 'http://192.168.1.11:5000';
+  API_BASE_URL = 'https://comparative-lizzy-bhuwonsorg-d68d66cf.koyeb.app';
 }
 
 const axiosClient = axios.create({

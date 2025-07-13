@@ -3,25 +3,9 @@ import React from 'react';
 import { Tabs, usePathname } from 'expo-router';
 import { MessageSquare, Users, Bell, User, Settings, RadioTower } from 'lucide-react-native';
 import Colors from '../../../constants/Colors'; // Assuming Colors constant exists
-import { ViewStyle, TouchableOpacity, View, Text as RNText, StyleSheet } from 'react-native'; // Import necessary components
+import { ViewStyle } from 'react-native'; // Import necessary components
 
-// Custom component for the PingNear tab button with "Coming Soon" text
-const PingNearComingSoonButton = (props: any) => {
-  // The default props include the style for the tab slot and the children (Icon and Label)
-  // We render the default children and add our custom "Coming Soon" text below them.
-  return (
-    // Use a View to wrap the content and apply the default tab slot style.
-    // This View itself is not interactive, making the tab non-tappable.
-    <View {...props} style={[props.style, styles.pingNearTabButton]}>
-      {/* Render the default Icon and Label provided by Expo Router */}
-      {props.children}
-      {/* Add the "Coming Soon" text */}
-      <View style={styles.comingSoonBadge}>
-        <RNText style={styles.comingSoonText}>Soon</RNText> {/* Use a shorter text like 'Soon' to fit */}
-      </View>
-    </View>
-  );
-};
+
 
 
 export default function TabLayout() {
@@ -96,22 +80,14 @@ export default function TabLayout() {
         }}
       />
 
-      {/* PingNear - Coming Soon Tab (using the 'profile' screen) */}
-      {/* This tab is styled reddish, non-interactive, and has "Coming Soon" text */}
+      {/* PingNear Tab */}
       <Tabs.Screen
-        name="profile" // Corresponds to app/(protected)/(tabs)/profile.tsx
+        name="pingnear" // Corresponds to app/(protected)/(tabs)/pingnear.tsx
         options={{
-          title: 'PingNear', // Keep the title as PingNear
+          title: 'PingNear',
           tabBarIcon: ({ color, size }) => (
-            <RadioTower size={size} color={color} /> // Keep the RadioTower icon
+            <RadioTower size={size} color={color} />
           ),
-          // Override colors for this specific tab to make the default icon/label reddish
-          tabBarActiveTintColor: Colors.common.red?.[600] || '#DC2626', // A darker red when active
-          tabBarInactiveTintColor: Colors.common.red?.[400] || '#F87171', // A lighter red when inactive
-          // Use the custom component for the tab button
-          tabBarButton: PingNearComingSoonButton,
-          // Setting href: null would hide the tab entirely
-          // href: null, // Keep this commented out
         }}
       />
 
@@ -141,30 +117,4 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  // Style for the custom PingNear tab button container
-  pingNearTabButton: {
-    // The default props.style handles the flex layout for the tab bar slot.
-    // We add opacity to visually indicate it's disabled.
-    opacity: 0.6,
-    // Ensure the content (Icon, Label, Coming Soon) is centered within the tab slot
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Style for the "Coming Soon" badge View
-  comingSoonBadge: {
-    backgroundColor: Colors.common.red?.[100] || '#FEE2E2', // Light reddish background
-    borderRadius: 8, // Rounded corners for the badge
-    paddingHorizontal: 4, // Horizontal padding
-    paddingVertical: 1, // Vertical padding - make it small
-    marginTop: 2, // Small margin above the badge
-  },
-  // Style for the "Coming Soon" text
-  comingSoonText: {
-    fontSize: 8, // Very small font size
-    fontWeight: 'bold', // Make the text bold
-    color: Colors.common.red?.[800] || '#991B1B', // Dark reddish text color
-    fontFamily: 'Inter-Bold', // Use a bold font if available
-    textTransform: 'uppercase', // Optional: make text uppercase
-  },
-});
+

@@ -1,5 +1,5 @@
 // frontend/_layout.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,28 +18,32 @@ import { NotificationProvider } from '../context/NotificationContext';
 
 // App Event Listeners
 import { AppEventListeners } from '../components/AppEventListner';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 ExpoSplashScreen.preventAutoHideAsync();
 
 function Providers({ children }: { children: React.ReactNode }) {
-  return (
+  // Memoize the providers to prevent unnecessary re-renders
+  const providers = useMemo(() => (
     <ToastProvider>
       <SocketProvider>
         <MessageProvider>
           <NotificationProvider>
             {/* Other providers */}
             {/* <DeviceConnectionProvider> */}
-              <SocialConnectionProvider>
-                <AppEventListeners />
-                <StatusBar style="light" />
-                {children}
-              </SocialConnectionProvider>
             {/* </DeviceConnectionProvider> */}
+            <SocialConnectionProvider>
+              <AppEventListeners />
+              <StatusBar style="light" />
+              {children}
+            </SocialConnectionProvider>
           </NotificationProvider>
         </MessageProvider>
       </SocketProvider>
     </ToastProvider>
-  );
+  ), [children]);
+
+  return providers;
 }
 
 function RootLayout() {
@@ -58,12 +62,56 @@ function RootLayout() {
     'Inter-SemiBold': require('../assets/fonts/Inter_18pt-SemiBold.ttf'),
   });
 
+  // Memoize the navigation logic to prevent unnecessary re-renders
+  const navigationLogic = useCallback(() => {
+    console.log('[Navigation] Navigation logic triggered');
+    console.log('[Navigation] appIsReady:', appIsReady);
+    console.log('[Navigation] user:', user ? 'exists' : 'null');
+    console.log('[Navigation] segments:', segments);
+    console.log('[Navigation] currentPath:', router.pathname);
+    
+    if (!appIsReady) {
+      console.log('[Navigation] App not ready, skipping navigation');
+      return;
+    }
+
+    const inAuthGroup = segments[0] === '(auth)';
+    const currentPath = router.pathname;
+
+    if (user) {
+      console.log('[Navigation] User authenticated, checking if in auth group');
+      if (inAuthGroup || currentPath === '/') {
+        console.log('[Navigation] Redirecting to protected tabs');
+        router.replace('/(protected)/(tabs)');
+      } else {
+        console.log('[Navigation] User already in protected area');
+      }
+    } else {
+      console.log('[Navigation] User not authenticated, checking if in auth group');
+      if (!inAuthGroup) {
+        console.log('[Navigation] Redirecting to signin');
+        router.replace('/(auth)/signin');
+      } else {
+        console.log('[Navigation] User already in auth area');
+      }
+    }
+  }, [user, appIsReady, segments, router]);
+
+  // Memoize the stack configuration to prevent unnecessary re-renders
+  const stackConfig = useMemo(() => ({
+    screenOptions: {
+      headerShown: false,
+      animation: 'fade',
+      animationDuration: 250,
+    }
+  }), []);
+
   useEffect(() => {
     async function prepare() {
       try {
         if (fontsLoaded && !loadingUser) {
-           await ExpoSplashScreen.hideAsync();
-           setAppIsReady(true);
+          await ExpoSplashScreen.hideAsync();
+          setAppIsReady(true);
         }
       } catch (e) {
         console.warn(e);
@@ -75,23 +123,13 @@ function RootLayout() {
   }, [fontsLoaded, loadingUser]);
 
   useEffect(() => {
-    if (!appIsReady) {
-      return;
-    }
+    navigationLogic();
+  }, [navigationLogic]);
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const currentPath = router.pathname;
-
-    if (user) {
-      if (inAuthGroup || currentPath === '/') {
-        router.replace('/(protected)/(tabs)');
-      }
-    } else {
-      if (!inAuthGroup) {
-         router.replace('/(auth)/signin');
-      }
-    }
-  }, [user, appIsReady, segments, router]);
+  // Monitor user state changes for debugging
+  useEffect(() => {
+    console.log('[Layout] User state changed:', user ? 'authenticated' : 'not authenticated');
+  }, [user]);
 
   if (!appIsReady) {
     return null;
@@ -101,13 +139,7 @@ function RootLayout() {
     <ThemeProvider>
       <SafeAreaProvider>
         <Providers>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              animation: 'fade',
-              animationDuration: 250,
-            }}
-          >
+          <Stack {...stackConfig}>
             <Stack.Screen
               name="(auth)"
               options={{ gestureEnabled: false }}
@@ -131,8 +163,10 @@ function RootLayout() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <RootLayout />
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
